@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vehicle 5: Cartoon Bug Simulator with Behavioral Scoring</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #f1f5f9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { color: #38bdf8; margin-bottom: 2px; font-size: 24px; }
+        p.subtitle { color: #94a3b8; margin-top: 0; margin-bottom: 20px; font-size: 14px; }
+        .layout { display: flex; gap: 20px; max-width: 1450px; width: 100%; }
+        .left-column { display: flex; flex-direction: column; gap: 20px; flex: 1.8; }
+        canvas {
+            background-color: #020617;
+            border: 3px solid #38bdf8;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        .panel-block { background-color: #1e293b; border: 2px solid #475569; border-radius: 8px; padding: 15px; }
+        .right-column {
+            flex: 1.2;
+            background-color: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            border: 2px solid #475569;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .control-group { background: #0f172a; padding: 12px; border-radius: 6px; border-left: 4px solid #0284c7; }
+        .control-group.behavioral-contrast { border-left: 4px solid #f59e0b; background: #1c1917; }
+        .control-group.score-panel { border-left: 4px solid #22c55e; background: #064e3b22; }
+        .control-group h3 { margin-top: 0; margin-bottom: 8px; color: #38bdf8; font-size: 14px; }
+        button {
+            background-color: #0284c7; color: white; border: none; padding: 6px 10px;
+            font-size: 12px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: all 0.2s;
+        }
+        button:hover { background-color: #0369a1; }
+        button.active { background-color: #22c55e; }
+        .telemetry-table { width: 100%; font-family: monospace; font-size: 12px; border-collapse: collapse; }
+        .telemetry-table td { padding: 3px 0; }
+        .value { text-align: right; color: #e2e8f0; font-weight: bold; }
+        .high { color: #f59e0b; }
+        .active-bit { color: #22c55e; font-weight: bold; }
+        .danger-bit { color: #ef4444; font-weight: bold; }
+        .idle-bit { color: #64748b; }
+        .log-box {
+            background-color: #020617; color: #38bdf8; font-family: monospace; font-size: 11px;
+            padding: 8px; height: 95px; overflow-y: auto; border-radius: 4px; border: 1px solid #334155; margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Vehicle 5: Cartoon Bug Simulator with Behavioral Scoring</h1>
+    <p class="subtitle">Starts at rest. Activates upon source detection</p>
+
+    <div class="layout">
+        <div class="left-column">
+            <canvas id="envCanvas" width="720" height="340"></canvas>
+            
+            <div class="panel-block">
+                <strong style="color: #38bdf8; font-size: 13px;">McCulloch-Pitts Neural Network Layout (Primary Cartoon Bug)</strong>
+                <canvas id="circuitCanvas" width="720" height="190" style="background:#0f172a; margin-top:8px; border:1px solid #334155;"></canvas>
+            </div>
+        </div>
+
+        <div class="right-column">
+            <div class="control-group score-panel">
+                <h3 style="color: #22c55e; margin-bottom: 4px;">Behavioral Score Tracker</h3>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size: 12px; color:#cbd5e1;">Current Score (+5 Green / -2 Red):</span>
+                    <span id="scoreDisplay" style="font-size: 20px; font-family: monospace; font-weight: bold; color: #22c55e;">0</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>1. Steering Gate Threshold</h3>
+                <div style="display:flex; gap:6px; margin-bottom: 8px; flex-wrap: wrap;">
+                    <button id="orBtn" class="active" onclick="setThresholdMode('OR')">OR (Th=1)</button>
+                    <button id="andBtn" onclick="setThresholdMode('AND')">AND (Th=2)</button>
+                    <button id="customBtn" onclick="setThresholdMode('CUSTOM')">Custom (Th=2.0)</button>
+                </div>
+            </div>
+
+            <div class="control-group behavioral-contrast">
+                <h3 style="color: #f59e0b;">2. Braitenberg Response (Green vs Red)</h3>
+                <p id="behaviorDesc" style="font-size: 11px; margin: 0; color: #cbd5e1; line-height: 1.4;">
+                    <strong>Green (Appetence):</strong> Excitatory attraction (+5 pts). Bug chases it &amp; speeds up.<br>
+                    <strong>Red (Aversion/Hazard):</strong> Inhibitory hazard (-2 pts). Triggers emotional alert &amp; slows down.
+                </p>
+            </div>
+
+            <div class="control-group">
+                <h3>3. Element &amp; Cartoon Bug Spawn Toolbox</h3>
+                <div style="display:flex; gap:6px; margin-bottom: 5px; flex-wrap: wrap;">
+                    <button id="spawnFuelBtn" class="active" onclick="setTool('fuel')">Bio-Fuel (+5 Green)</button>
+                    <button id="spawnMineBtn" onclick="setTool('mine')">Mine (-2 Red)</button>
+                    <button id="spawnVehicleBtn" onclick="setTool('vehicle')" style="background-color: #8b5cf6;">Add Cartoon Bug</button>
+                </div>
+                <button style="background-color: #475569; width: 100%; margin-top: 4px;" onclick="clearAllEntities()">Clear All Entities &amp; Extra Bugs</button>
+            </div>
+
+            <div class="control-group">
+                <h3>4. Sequence Pulse Injector (4 Green -> 2 Red)</h3>
+                <div style="display:flex; gap:6px; margin-bottom:8px;">
+                    <button style="background:#22c55e;" onclick="injectStreamEvent('fuel')">Pulse Fuel [F]</button>
+                    <button style="background:#ef4444;" onclick="injectStreamEvent('mine')">Pulse Mine [M]</button>
+                </div>
+                <button style="background:#7c3aed; width:100%;" onclick="runAutoPatternSequence()">Run Auto Match Stream (4F -> 2M)</button>
+                <div id="timelineDisplay" style="font-family:monospace; font-size:11px; margin-top:8px; color:#f59e0b; background:#020617; padding:4px; border-radius:4px;">Stream: [AWAITING]</div>
+            </div>
+
+            <div class="control-group" style="flex-grow:1;">
+                <h3>5. Live Computational Telemetry (Primary Bug)</h3>
+                <table class="telemetry-table">
+                    <tr><td>Active Bug Count:</td><td id="mVCount" class="value high">1</td></tr>
+                    <tr><td>Sensor Left Firing (S_L):</td><td id="mSL" class="value idle-bit">0</td></tr>
+                    <tr><td>Sensor Right Firing (S_R):</td><td id="mSR" class="value idle-bit">0</td></tr>
+                    <tr><td>Combiner Threshold Sum:</td><td id="mSum" class="value high">0</td></tr>
+                    <tr><td>Reciprocal Memory Latch:</td><td id="mMem" class="value idle-bit">EMPTY</td></tr>
+                    <tr><td>Pattern Halt Timer Remaining:</td><td id="mHaltTimer" class="value idle-bit">0.0s</td></tr>
+                    <tr><td>Custom Pattern Signal State:</td><td id="mPattern" class="value idle-bit" style="font-weight:bold;">NO SIGNAL</td></tr>
+                </table>
+                <div class="log-box" id="patternLog">Cartoon bug simulator initialized with scoring system. Ready.</div>
+            </div>
+            
+            <button style="background-color: #ef4444; font-weight: bold;" onclick="applyInhibitoryClear()">Reset Score, Memory &amp; Field</button>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('envCanvas');
+    const ctx = canvas.getContext('2d');
+    const cCanvas = document.getElementById('circuitCanvas');
+    const cCtx = cCanvas.getContext('2d');
+
+    let logicMode = 'OR';
+    let currentTool = 'fuel';
+
+    let behavioralScore = 0;
+    let memA = 0; let memB = 0;
+    let f1 = 0, f2 = 0, f3 = 0, f4 = 0, m1_node = 0, m2_node = 0, finalPatternSignal = 0;
+    let streamHistory = [];
+    let signalHaltFrames = 0;
+
+    let vehicles = [];
+    let entities = [];
+
+    const baseSpeed = 1.3;
+
+    function updateScoreDisplay() {
+        let el = document.getElementById('scoreDisplay');
+        el.innerText = behavioralScore;
+        el.style.color = behavioralScore >= 0 ? '#22c55e' : '#ef4444';
+    }
+
+    function spawnVehicle(x, y, angle = -Math.PI/2) {
+        vehicles.push({
+            x: x, y: y,
+            angle: angle,
+            speed: 0,
+            radius: 18,
+            sensorAngle: 0.35,
+            sensorDistance: 45,
+            sL_val: 0, sR_val: 0,
+            motorActive: false
+        });
+    }
+
+    function initEnvironment() {
+        entities = [];
+        vehicles = [];
+        spawnVehicle(360, 170, -Math.PI/2);
+    }
+
+    function addEntity(type, x, y) {
+        if (type === 'vehicle') {
+            spawnVehicle(x, y, Math.random() * Math.PI * 2);
+            document.getElementById('patternLog').innerHTML += `<br>> Spawned cartoon bug at (${Math.round(x)}, ${Math.round(y)})`;
+        } else {
+            entities.push({
+                x: x,
+                y: y,
+                type: type,
+                radius: type === 'fuel' ? 7 : 9
+            });
+        }
+    }
+
+    canvas.addEventListener('click', (e) => {
+        const r = canvas.getBoundingClientRect();
+        addEntity(currentTool, e.clientX - r.left, e.clientY - r.top);
+    });
+
+    canvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const r = canvas.getBoundingClientRect();
+        let mX = e.clientX - r.left;
+        let mY = e.clientY - r.top;
+
+        for(let i = entities.length - 1; i >= 0; i--) {
+            let dist = Math.hypot(entities[i].x - mX, entities[i].y - mY);
+            if(dist < entities[i].radius + 10) {
+                entities.splice(i, 1);
+                return;
+            }
+        }
+        if (vehicles.length > 1) {
+            for(let i = vehicles.length - 1; i >= 0; i--) {
+                let dist = Math.hypot(vehicles[i].x - mX, vehicles[i].y - mY);
+                if(dist < vehicles[i].radius + 10) {
+                    vehicles.splice(i, 1);
+                    document.getElementById('patternLog').innerHTML += `<br><span style="color:#ef4444;">> Removed cartoon bug from field.</span>`;
+                    return;
+                }
+            }
+        }
+    });
+
+    function clearAllEntities() { 
+        entities = []; 
+        vehicles = [vehicles[0]]; 
+        document.getElementById('patternLog').innerHTML += `<br><span style="color:#ef4444;">> Cleared all grid elements and extra bugs.</span>`;
+    }
+
+    function setThresholdMode(mode) {
+        logicMode = mode;
+        document.getElementById('orBtn').classList.toggle('active', mode === 'OR');
+        document.getElementById('andBtn').classList.toggle('active', mode === 'AND');
+        document.getElementById('customBtn').classList.toggle('active', mode === 'CUSTOM');
+    }
+
+    function setTool(tool) {
+        currentTool = tool;
+        document.getElementById('spawnFuelBtn').classList.toggle('active', tool === 'fuel');
+        document.getElementById('spawnMineBtn').classList.toggle('active', tool === 'mine');
+        document.getElementById('spawnVehicleBtn').classList.toggle('active', tool === 'vehicle');
+    }
+
+    function applyInhibitoryClear() {
+        behavioralScore = 0;
+        updateScoreDisplay();
+        memA = 0; memB = 0; f1 = 0; f2 = 0; f3 = 0; f4 = 0; m1_node = 0; m2_node = 0; finalPatternSignal = 0;
+        signalHaltFrames = 0;
+        vehicles.forEach(v => { v.speed = 0; v.motorActive = false; });
+        initEnvironment();
+        document.getElementById('patternLog').innerHTML += `<br><span style="color:#ef4444;">> Global Reset: Score and memory cleared.</span>`;
+    }
+
+    function stepCustomPatternCircuit(eventType) {
+        if (eventType !== 'idle') {
+            streamHistory.push(eventType === 'fuel' ? 'F' : 'M');
+            if(streamHistory.length > 8) streamHistory.shift();
+            document.getElementById('timelineDisplay').innerText = "Stream: " + streamHistory.map(v=>`[${v}]`).join("->");
+        }
+
+        let F_signal = eventType === 'fuel' ? 1 : 0;
+        let M_signal = eventType === 'mine' ? 1 : 0;
+
+        let pF1 = f1, pF2 = f2, pF3 = f3, pF4 = f4, pM1 = m1_node, pM2 = m2_node;
+
+        f1 = (F_signal >= 1) ? 1 : 0; 
+        f2 = (F_signal + pF1 >= 2) ? 1 : 0;
+        f3 = (F_signal + pF2 >= 2) ? 1 : 0;
+        f4 = (F_signal + pF3 >= 2) ? 1 : 0;
+
+        m1_node = (M_signal + pF4 >= 2) ? 1 : 0;
+        m2_node = (M_signal + pM1 >= 2) ? 1 : 0;
+
+        if (M_signal && pM1 === 1) {
+            finalPatternSignal = 1;
+            signalHaltFrames = 300; 
+        }
+
+        if(F_signal && pM1) { f1=1; f2=0; f3=0; f4=0; m1_node=0; m2_node=0; }
+
+        let log = document.getElementById('patternLog');
+        if (eventType !== 'idle') {
+            log.innerHTML += `<br>> Clock Tick | In: ${eventType.toUpperCase()} | State: [F:${f1}${f2}${f3}${f4} M:${m1_node}${m2_node}]`;
+            log.scrollTop = log.scrollHeight;
+        }
+    }
+
+    function injectStreamEvent(type) { 
+        if(type === 'fuel') {
+            behavioralScore += 5;
+            document.getElementById('patternLog').innerHTML += `<br><span style="color:#22c55e;">> Consumed Fuel: +5 pts (Score: ${behavioralScore})</span>`;
+        } else {
+            behavioralScore -= 2;
+            document.getElementById('patternLog').innerHTML += `<br><span style="color:#ef4444;">> Hit Mine: -2 pts (Score: ${behavioralScore})</span>`;
+        }
+        updateScoreDisplay();
+        stepCustomPatternCircuit(type); 
+    }
+
+    function runAutoPatternSequence() {
+        let seq = ['fuel', 'fuel', 'fuel', 'fuel', 'mine', 'mine'];
+        let step = 0;
+        let intv = setInterval(() => {
+            if(step < seq.length) {
+                injectStreamEvent(seq[step]);
+                step++;
+            }
+            else { clearInterval(intv); }
+        }, 500);
+    }
+
+    function getActiveThreshold() {
+        if (logicMode === 'OR') return 1;
+        if (logicMode === 'AND') return 2;
+        return 2.0; // Custom floating-point threshold option
+    }
+
+    function updateSimulation() {
+        vehicles.forEach(vehicle => {
+            let sLX = vehicle.x + Math.cos(vehicle.angle - vehicle.sensorAngle) * vehicle.sensorDistance;
+            let sLY = vehicle.y + Math.sin(vehicle.angle - vehicle.sensorAngle) * vehicle.sensorDistance;
+            let sRX = vehicle.x + Math.cos(vehicle.angle + vehicle.sensorAngle) * vehicle.sensorDistance;
+            let sRY = vehicle.y + Math.sin(vehicle.angle + vehicle.sensorAngle) * vehicle.sensorDistance;
+
+            let rawSL = 0, rawSR = 0;
+            let detectionRadius = 90;
+            let nearestEntitySignal = 0;
+
+            entities.forEach((ent, idx) => {
+                let dBody = Math.hypot(ent.x - vehicle.x, ent.y - vehicle.y);
+                if(dBody < vehicle.radius + ent.radius) {
+                    if (vehicle === vehicles[0]) {
+                        if(ent.type === 'fuel') {
+                            behavioralScore += 5;
+                            document.getElementById('patternLog').innerHTML += `<br><span style="color:#22c55e;">> Consumed Fuel (+5 pts) | Score: ${behavioralScore}</span>`;
+                            updateScoreDisplay();
+                            entities.splice(idx, 1);
+                            stepCustomPatternCircuit('fuel');
+                        } else {
+                            behavioralScore -= 2;
+                            document.getElementById('patternLog').innerHTML += `<br><span style="color:#ef4444;">> Hit Mine (-2 pts) | Score: ${behavioralScore}</span>`;
+                            updateScoreDisplay();
+                            memA = 1; 
+                            entities.splice(idx, 1);
+                            stepCustomPatternCircuit('mine');
+                        }
+                    } else {
+                        entities.splice(idx, 1);
+                    }
+                    return;
+                }
+
+                let dL = Math.hypot(ent.x - sLX, ent.y - sLY);
+                let dR = Math.hypot(ent.x - sRX, ent.y - sRY);
+                
+                if(dL < detectionRadius) {
+                    let intensity = (1 - dL / detectionRadius);
+                    rawSL += intensity;
+                    if (ent.type === 'fuel') nearestEntitySignal += intensity;
+                    else nearestEntitySignal -= intensity;
+                }
+                if(dR < detectionRadius) {
+                    let intensity = (1 - dR / detectionRadius);
+                    rawSR += intensity;
+                    if (ent.type === 'fuel') nearestEntitySignal += intensity;
+                    else nearestEntitySignal -= intensity;
+                }
+            });
+
+            if (memA === 1 || memB === 1) { memA = 1; memB = 1; }
+
+            vehicle.sL_val = rawSL > 0.1 ? 1 : 0;
+            vehicle.sR_val = rawSR > 0.1 ? 1 : 0;
+
+            let combinerSum = vehicle.sL_val + vehicle.sR_val;
+            let targetThresh = getActiveThreshold();
+            vehicle.motorActive = combinerSum >= targetThresh;
+
+            if (signalHaltFrames > 0 && vehicle === vehicles[0]) {
+                vehicle.speed = 0;
+            } else {
+                if(vehicle.motorActive) {
+                    if(vehicle.sL_val > vehicle.sR_val) vehicle.angle -= 0.045;
+                    if(vehicle.sR_val > vehicle.sL_val) vehicle.angle += 0.045;
+                    
+                    let dynamicSpeedFactor = 1.6 + (nearestEntitySignal * 0.8);
+                    if (dynamicSpeedFactor < 0.4) dynamicSpeedFactor = 0.4;
+                    vehicle.speed = baseSpeed * dynamicSpeedFactor;
+                } else {
+                    vehicle.speed = 0;
+                }
+            }
+
+            vehicle.x += Math.cos(vehicle.angle) * vehicle.speed;
+            vehicle.y += Math.sin(vehicle.angle) * vehicle.speed;
+
+            let buffer = vehicle.radius + 2;
+            if (vehicle.x < buffer) { vehicle.x = buffer; vehicle.angle = Math.PI - vehicle.angle; }
+            if (vehicle.x > canvas.width - buffer) { vehicle.x = canvas.width - buffer; vehicle.angle = Math.PI - vehicle.angle; }
+            if (vehicle.y < buffer) { vehicle.y = buffer; vehicle.angle = -vehicle.angle; }
+            if (vehicle.y > canvas.height - buffer) { vehicle.y = canvas.height - buffer; vehicle.angle = -vehicle.angle; }
+        });
+
+        if (signalHaltFrames > 0) {
+            signalHaltFrames--;
+            if (signalHaltFrames === 0) finalPatternSignal = 0;
+        }
+
+        let primary = vehicles[0];
+        document.getElementById('mVCount').innerText = vehicles.length;
+        document.getElementById('mSL').innerText = primary.sL_val;
+        document.getElementById('mSL').className = primary.sL_val ? "value active-bit" : "value idle-bit";
+        
+        document.getElementById('mSR').innerText = primary.sR_val;
+        document.getElementById('mSR').className = primary.sR_val ? "value active-bit" : "value idle-bit";
+        
+        document.getElementById('mSum').innerText = primary.sL_val + primary.sR_val;
+        document.getElementById('mHaltTimer').innerText = (signalHaltFrames / 60).toFixed(1) + "s";
+        document.getElementById('mHaltTimer').className = signalHaltFrames > 0 ? "value active-bit" : "value idle-bit";
+        
+        document.getElementById('mMem').innerText = memA ? "LATCH LOCKED" : "EMPTY"; 
+        document.getElementById('mMem').className = memA ? "value danger-bit" : "value idle-bit";
+        
+        document.getElementById('mPattern').innerText = finalPatternSignal ? "🎯 SIGNAL HIGH" : "NO SIGNAL"; 
+        document.getElementById('mPattern').className = finalPatternSignal ? "value active-bit" : "value idle-bit";
+    }
+
+    function drawEnvironment() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
+        for(let i=0; i<canvas.width; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
+        for(let j=0; j<canvas.height; j+=40) { ctx.beginPath(); ctx.moveTo(0,j); ctx.lineTo(canvas.width,j); ctx.stroke(); }
+
+        entities.forEach(ent => {
+            ctx.beginPath(); ctx.arc(ent.x, ent.y, ent.radius, 0, Math.PI*2);
+            ctx.fillStyle = ent.type === 'fuel' ? '#22c55e' : '#ef4444'; ctx.fill();
+        });
+
+        vehicles.forEach((vehicle, idx) => {
+            ctx.save();
+            ctx.translate(vehicle.x, vehicle.y); ctx.rotate(vehicle.angle);
+
+            let primaryState = (idx === 0);
+            let isAlert = primaryState && memA === 1;
+            let isMatched = primaryState && finalPatternSignal === 1;
+
+            ctx.fillStyle = isMatched ? '#a78bfa' : (isAlert ? '#dc2626' : (idx === 0 ? '#38bdf8' : '#a855f7'));
+            ctx.strokeStyle = isAlert ? '#f87171' : '#0284c7';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 14, 10, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = isAlert ? '#991b1b' : (idx === 0 ? '#0284c7' : '#7e22ce');
+            ctx.beginPath();
+            ctx.arc(12, 0, 7, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(16, -3); ctx.lineTo(24, -10);
+            ctx.moveTo(16, 3); ctx.lineTo(24, 10);
+            ctx.stroke();
+
+            ctx.fillStyle = '#eab308';
+            ctx.beginPath();
+            ctx.arc(24, -10, 2, 0, Math.PI * 2);
+            ctx.arc(24, 10, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(14, -3, 3, 0, Math.PI * 2);
+            ctx.arc(14, 3, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = isAlert ? '#ef4444' : '#0f172a';
+            ctx.beginPath();
+            ctx.arc(15, -3, 1.2, 0, Math.PI * 2);
+            ctx.arc(15, 3, 1.2, 0, Math.PI * 2);
+            ctx.fill();
+
+            let sLX = Math.cos(-vehicle.sensorAngle)*vehicle.sensorDistance;
+            let sLY = Math.sin(-vehicle.sensorAngle)*vehicle.sensorDistance;
+            let sRX = Math.cos(vehicle.sensorAngle)*vehicle.sensorDistance;
+            let sRY = Math.sin(vehicle.sensorAngle)*vehicle.sensorDistance;
+            
+            ctx.strokeStyle = vehicle.sL_val ? '#22c55e' : '#475569';
+            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(sLX, sLY); ctx.stroke();
+            
+            ctx.strokeStyle = vehicle.sR_val ? '#22c55e' : '#475569';
+            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(sRX, sRY); ctx.stroke();
+            
+            ctx.fillStyle = '#eab308';
+            ctx.beginPath(); ctx.arc(sLX, sLY, 2.5, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(sRX, sRY, 2.5, 0, Math.PI*2); ctx.fill();
+            ctx.restore();
+        });
+    }
+
+    function drawInternalBrainCircuit() {
+        cCtx.clearRect(0, 0, cCanvas.width, cCanvas.height);
+        let vehicle = vehicles[0];
+
+        let gateLabel = logicMode === 'OR' ? 'Gate(>=1)' : (logicMode === 'AND' ? 'Gate(>=2)' : 'Gate(>=1.5)');
+
+        let nodes = {
+            sL: {x: 100, y: 35, lbl: "Sensor L", st: vehicle.sL_val, c: '#22c55e'},
+            sR: {x: 100, y: 115, lbl: "Sensor R", st: vehicle.sR_val, c: '#22c55e'},
+            gate: {x: 240, y: 75, lbl: gateLabel, st: vehicle.motorActive?1:0, c: '#22c55e'},
+            
+            m1: {x: 420, y: 35, lbl: "Mem M1", st: memA, c: '#ef4444'},
+            m2: {x: 420, y: 115, lbl: "Mem M2", st: memB, c: '#ef4444'},
+
+            n1: {x: 390, y: 162, lbl: "N1 (Th=1)", st: f1, c: '#38bdf8'},
+            n2: {x: 470, y: 162, lbl: "N2 (Th=1)", st: f2, c: '#38bdf8'},
+            n3: {x: 550, y: 162, lbl: "N3 (Th=2)", st: f3, c: '#38bdf8'},
+            n4: {x: 630, y: 162, lbl: "N4 (Th=2)", st: f4, c: '#38bdf8'},
+            out: {x: 700, y: 105, lbl: "Match Out", st: finalPatternSignal, c: '#a78bfa'}
+        };
+
+        cCtx.lineWidth = 1.5;
+        
+        cCtx.strokeStyle = nodes.sL.st ? '#22c55e' : '#475569';
+        cCtx.beginPath(); cCtx.moveTo(nodes.sL.x, nodes.sL.y); cCtx.lineTo(nodes.gate.x, nodes.gate.y); cCtx.stroke();
+        
+        cCtx.strokeStyle = nodes.sR.st ? '#22c55e' : '#475569';
+        cCtx.beginPath(); cCtx.moveTo(nodes.sR.x, nodes.sR.y); cCtx.lineTo(nodes.gate.x, nodes.gate.y); cCtx.stroke();
+
+        cCtx.strokeStyle = memA ? '#ef4444' : '#475569';
+        cCtx.beginPath(); cCtx.moveTo(nodes.m1.x - 6, nodes.m1.y); cCtx.lineTo(nodes.m2.x - 6, nodes.m2.y); cCtx.stroke();
+        cCtx.beginPath(); cCtx.moveTo(nodes.m1.x + 6, nodes.m1.y); cCtx.lineTo(nodes.m2.x + 6, nodes.m2.y); cCtx.stroke();
+
+        cCtx.strokeStyle = '#475569';
+        cCtx.beginPath(); cCtx.moveTo(330, 162); cCtx.lineTo(nodes.n4.x, 162); cCtx.stroke();
+        
+        cCtx.strokeStyle = nodes.n1.st ? '#38bdf8' : '#475569';
+        cCtx.beginPath(); cCtx.moveTo(nodes.n1.x, nodes.n1.y); cCtx.lineTo(nodes.n2.x, nodes.n2.y); cCtx.stroke();
+        cCtx.strokeStyle = nodes.n2.st ? '#38bdf8' : '#475569';
+        cCtx.beginPath(); cCtx.moveTo(nodes.n2.x, nodes.n2.y); cCtx.lineTo(nodes.n3.x, nodes.n3.y); cCtx.stroke();
+        cCtx.strokeStyle = nodes.n3.st ? '#38bdf8' : '#475569';
+        cCtx.beginPath(); cCtx.moveTo(nodes.n3.x, nodes.n3.y); cCtx.lineTo(nodes.n4.x, nodes.n4.y); cCtx.stroke();
+        cCtx.strokeStyle = nodes.n4.st ? '#a78bfa' : '#475569';
+        cCtx.beginPath(); cCtx.moveTo(nodes.n4.x, nodes.n4.y); cCtx.lineTo(nodes.out.x, nodes.out.y); cCtx.stroke();
+
+        Object.keys(nodes).forEach(k => {
+            let n = nodes[k];
+            cCtx.beginPath(); cCtx.arc(n.x, n.y, 11, 0, Math.PI*2);
+            cCtx.fillStyle = n.st ? n.c : '#334155'; cCtx.fill();
+            cCtx.strokeStyle = '#94a3b8'; cCtx.stroke();
+
+            cCtx.fillStyle = '#cbd5e1'; cCtx.font = '9px sans-serif';
+            cCtx.fillText(n.lbl, n.x - 20, n.y - 15);
+
+            cCtx.fillStyle = '#fff'; cCtx.font = 'bold 10px monospace';
+            cCtx.fillText(n.st, n.x - 3, n.y + 3);
+        });
+    }
+
+    function mainLoop() {
+        updateSimulation();
+        drawEnvironment();
+        drawInternalBrainCircuit();
+        requestAnimationFrame(mainLoop);
+    }
+
+    initEnvironment();
+    updateScoreDisplay();
+    mainLoop();
+</script>
+</body>
+</html>
